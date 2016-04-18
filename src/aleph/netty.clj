@@ -174,14 +174,14 @@
   [^Future f]
   (when f
     (if (.isSuccess f)
-      (d/success-deferred true)
+      (d/success-deferred (.getNow f))
       (let [d (d/deferred)]
         (.addListener f
           (reify GenericFutureListener
             (operationComplete [_ _]
               (cond
                 (.isSuccess f)
-                (d/success! d true)
+                (d/success! d (.getNow f))
 
                 (.isCancelled f)
                 (d/error! d (CancellationException. "future is cancelled."))
@@ -258,18 +258,20 @@
              false)
 
       (do
+
         ;; enable backpressure
         (-> ch .config (.setAutoRead false))
 
-        (d/chain' d
-          (fn [result]
-
-            (when-not result
-              (release msg)
-              (.close ch))
-
-            ;; disable backpressure
-            (-> ch .config (.setAutoRead true))))
+        (-> d
+          (d/finally'
+            (fn []
+              ;; disable backpressure
+              (-> ch .config (.setAutoRead true))))
+          (d/chain'
+            (fn [result]
+              (when-not result
+                (release msg)
+                (.close ch)))))
         d))))
 
 ;;;
@@ -322,7 +324,7 @@
                         " into binary representation"))
                     (close ch)))
             ^ChannelFuture f (write-and-flush ch msg)
-            d (or (wrap-future f) (d/success-deferred true))]
+            d (d/chain (wrap-future f) (fn [_] true))]
         (if blocking?
           @d
           d))))
@@ -670,10 +672,13 @@
    on-close
    ^SocketAddress socket-address
    epoll?]
-  (let [^EventLoopGroup
+  (let [num-cores (.availableProcessors (Runtime/getRuntime))
+        num-threads (* 2 num-cores)
+        thread-factory (DefaultThreadFactory. "aleph-netty-server-event-pool" true)
+        ^EventLoopGroup
         group (if (and epoll? (epoll-available?))
-                (EpollEventLoopGroup.)
-                (NioEventLoopGroup.))
+                (EpollEventLoopGroup. num-threads thread-factory)
+                (NioEventLoopGroup. num-threads thread-factory))
 
         ^Class
         channel (if (and epoll? (epoll-available?))
@@ -688,25 +693,30 @@
                              (pipeline-builder p))
                            pipeline-builder)]
 
-    (let [b (doto (ServerBootstrap.)
-              (.option ChannelOption/SO_BACKLOG (int 1024))
-              (.option ChannelOption/SO_REUSEADDR true)
-              (.option ChannelOption/MAX_MESSAGES_PER_READ Integer/MAX_VALUE)
-              (.group group)
-              (.channel channel)
-              (.childHandler (pipeline-initializer pipeline-builder))
-              (.childOption ChannelOption/SO_REUSEADDR true)
-              (.childOption ChannelOption/MAX_MESSAGES_PER_READ Integer/MAX_VALUE)
-              bootstrap-transform)
+    (try
+      (let [b (doto (ServerBootstrap.)
+                (.option ChannelOption/SO_BACKLOG (int 1024))
+                (.option ChannelOption/SO_REUSEADDR true)
+                (.option ChannelOption/MAX_MESSAGES_PER_READ Integer/MAX_VALUE)
+                (.group group)
+                (.channel channel)
+                (.childHandler (pipeline-initializer pipeline-builder))
+                (.childOption ChannelOption/SO_REUSEADDR true)
+                (.childOption ChannelOption/MAX_MESSAGES_PER_READ Integer/MAX_VALUE)
+                bootstrap-transform)
 
-          ^ServerSocketChannel
-          ch (-> b (.bind socket-address) .sync .channel)]
-      (reify
-        java.io.Closeable
-        (close [_]
-          (when on-close (on-close))
-          (-> ch .close .sync)
-          (-> group .shutdownGracefully wrap-future))
-        AlephServer
-        (port [_]
-          (-> ch .localAddress .getPort))))))
+            ^ServerSocketChannel
+            ch (-> b (.bind socket-address) .sync .channel)]
+        (reify
+          java.io.Closeable
+          (close [_]
+            (when on-close (on-close))
+            (-> ch .close .sync)
+            (-> group .shutdownGracefully wrap-future))
+          AlephServer
+          (port [_]
+            (-> ch .localAddress .getPort))))
+
+      (catch Exception e
+        @(.shutdownGracefully group)
+        (throw e)))))

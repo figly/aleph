@@ -287,6 +287,12 @@
 
       (s/connect src sink)
 
+      (-> ch
+        netty/channel
+        .closeFuture
+        netty/wrap-future
+        (d/chain (fn [_] (s/close! src))))
+
       (let [d (d/deferred)]
         (s/on-closed sink
           (fn []

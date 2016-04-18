@@ -149,10 +149,11 @@
    | `insecure?` | if `true`, the certificates for `wss://` will be ignored.
    | `extensions?` | if `true`, the websocket extensions will be supported.
    | `sub-protocols` | a string with a comma seperated list of supported sub-protocls.
-   | `headers` | the headers that should be included in the handshake"
+   | `headers` | the headers that should be included in the handshake
+   | `max-frame-payload` | maximum allowable frame payload length, in bytes"
   ([url]
     (websocket-client url nil))
-  ([url {:keys [raw-stream? insecure? sub-protocols extensions? headers] :as options}]
+  ([url {:keys [raw-stream? insecure? sub-protocols extensions? headers max-frame-payload] :as options}]
     (client/websocket-connection url options)))
 
 (defn websocket-connection
@@ -163,10 +164,11 @@
    |:---|:---
    | `raw-stream?` | if `true`, the connection will emit raw `io.netty.buffer.ByteBuf` objects rather than strings or byte-arrays.  This will minimize copying, but means that care must be taken with Netty's buffer reference counting.  Only recommended for advanced users.
    | `headers` | the headers that should be included in the handshake
-   | `max-frame-payload` | Maximum allowable frame payload length"
+   | `max-frame-payload` | maximum allowable frame payload length, in bytes
+   | `allow-extensions?` | if true, allows extensions to the WebSocket protocol"
   ([req]
     (websocket-connection req nil))
-  ([req {:keys [raw-stream? headers max-frame-payload] :as options}]
+  ([req {:keys [raw-stream? headers max-frame-payload allow-extensions?] :as options}]
     (server/initialize-websocket-handler req options)))
 
 (let [maybe-timeout! (fn [d timeout] (when d (d/timeout! d timeout)))
@@ -293,7 +295,8 @@
    | `pool` | the `connection-pool` that should be used, defaults to the `default-connection-pool`
    | `middleware` | any additional middleware that should be used for handling requests and responses
    | `headers` | the HTTP headers for the request
-   | `body` | an optional body, which should be coercable to a byte representation via [byte-streams](https://github.com/ztellman/byte-streams)")
+   | `body` | an optional body, which should be coercable to a byte representation via [byte-streams](https://github.com/ztellman/byte-streams)
+   | `multipart` | a vector of bodies")
        :arglists arglists)))
 
 (def-http-method get)

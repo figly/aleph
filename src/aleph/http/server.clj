@@ -357,11 +357,9 @@
 
           (instance? HttpContent msg)
           (let [content (.content ^HttpContent msg)]
-            (if (instance? LastHttpContent msg)
-              (do
-                (s/put! @stream content)
-                (s/close! @stream))
-              (netty/put! (.channel ctx) @stream content))))))))
+            (netty/put! (.channel ctx) @stream content)
+            (when (instance? LastHttpContent msg)
+              (s/close! @stream))))))))
 
 (defn pipeline-builder
   [handler
@@ -508,8 +506,8 @@
 
 (defn initialize-websocket-handler
   [^NettyRequest req
-   {:keys [raw-stream? headers max-frame-payload]
-    :or {raw-stream? false, max-frame-payload 65536}
+   {:keys [raw-stream? headers max-frame-payload allow-extensions?]
+    :or {raw-stream? false, max-frame-payload 65536, allow-extensions? false}
     :as options}]
 
   (-> req ^AtomicBoolean (.websocket?) (.set true))
@@ -522,7 +520,7 @@
               (get-in req [:headers "host"])
               (:uri req))
         req (http/ring-request->full-netty-request req)
-        factory (WebSocketServerHandshakerFactory. url nil false max-frame-payload)]
+        factory (WebSocketServerHandshakerFactory. url nil allow-extensions? max-frame-payload)]
     (if-let [handshaker (.newHandshaker factory req)]
       (try
         (let [[s ^ChannelHandler handler] (websocket-server-handler raw-stream? ch handshaker)
@@ -530,18 +528,15 @@
               h (DefaultHttpHeaders.)]
           (http/map->headers! h headers)
           (-> (try
-                (.handshake handshaker ch ^HttpRequest req h p)
-                (netty/wrap-future p)
+                (netty/wrap-future (.handshake handshaker ch ^HttpRequest req h p))
                 (catch Throwable e
                   (d/error-deferred e)))
             (d/chain'
-              (fn [x]
-                (if x
-                  (let [pipeline (.pipeline ch)]
-                    (.remove pipeline "request-handler")
-                    (.addLast pipeline "websocket-handler" handler)
-                    s)
-                  (.await p))))
+              (fn [_]
+                (let [pipeline (.pipeline ch)]
+                  (.remove pipeline "request-handler")
+                  (.addLast pipeline "websocket-handler" handler)
+                  s)))
             (d/catch'
               (fn [e]
                 (http/send-message
