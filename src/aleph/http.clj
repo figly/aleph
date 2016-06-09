@@ -103,10 +103,12 @@
            connection-options
            stats-callback
            response-executor
+           control-period
            middleware]
     :or {connections-per-host 8
          total-connections 1024
          target-utilization 0.9
+         control-period 60000
          response-executor default-response-executor
          middleware middleware/wrap-request}}]
   (let [p (promise)
@@ -126,6 +128,7 @@
                            (d/chain' c
                              first
                              client/close-connection))
+                :control-period control-period
                 :controller (Pools/utilizationController
                               target-utilization
                               connections-per-host
@@ -148,9 +151,9 @@
    | `raw-stream?` | if `true`, the connection will emit raw `io.netty.buffer.ByteBuf` objects rather than strings or byte-arrays.  This will minimize copying, but means that care must be taken with Netty's buffer reference counting.  Only recommended for advanced users.
    | `insecure?` | if `true`, the certificates for `wss://` will be ignored.
    | `extensions?` | if `true`, the websocket extensions will be supported.
-   | `sub-protocols` | a string with a comma seperated list of supported sub-protocls.
+   | `sub-protocols` | a string with a comma seperated list of supported sub-protocols.
    | `headers` | the headers that should be included in the handshake
-   | `max-frame-payload` | maximum allowable frame payload length, in bytes"
+   | `max-frame-payload` | maximum allowable frame payload length, in bytes, defaults to 65536."
   ([url]
     (websocket-client url nil))
   ([url {:keys [raw-stream? insecure? sub-protocols extensions? headers max-frame-payload] :as options}]
@@ -164,8 +167,8 @@
    |:---|:---
    | `raw-stream?` | if `true`, the connection will emit raw `io.netty.buffer.ByteBuf` objects rather than strings or byte-arrays.  This will minimize copying, but means that care must be taken with Netty's buffer reference counting.  Only recommended for advanced users.
    | `headers` | the headers that should be included in the handshake
-   | `max-frame-payload` | maximum allowable frame payload length, in bytes
-   | `max-frame-size` | maximum aggregate message size, in bytes
+   | `max-frame-payload` | maximum allowable frame payload length, in bytes, defaults to 65536.
+   | `max-frame-size` | maximum aggregate message size, in bytes, defaults to 1048576.
    | `allow-extensions?` | if true, allows extensions to the WebSocket protocol"
   ([req]
     (websocket-connection req nil))
@@ -303,6 +306,7 @@
 (def-http-method get)
 (def-http-method post)
 (def-http-method put)
+(def-http-method patch)
 (def-http-method options)
 (def-http-method trace)
 (def-http-method head)

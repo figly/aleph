@@ -24,6 +24,7 @@
     [io.netty.channel.epoll Epoll EpollEventLoopGroup
      EpollServerSocketChannel
      EpollSocketChannel]
+    [io.netty.util Attribute AttributeKey]
     [io.netty.handler.codec Headers]
     [io.netty.channel.nio NioEventLoopGroup]
     [io.netty.channel.socket ServerSocketChannel]
@@ -174,8 +175,8 @@
   [^Future f]
   (when f
     (if (.isSuccess f)
-      (d/success-deferred (.getNow f))
-      (let [d (d/deferred)]
+      (d/success-deferred (.getNow f) nil)
+      (let [d (d/deferred nil)]
         (.addListener f
           (reify GenericFutureListener
             (operationComplete [_ _]
@@ -273,6 +274,17 @@
                 (release msg)
                 (.close ch)))))
         d))))
+
+;;;
+
+(defn attribute [s]
+  (AttributeKey/valueOf (name s)))
+
+(defn get-attribute [ch attr]
+  (-> ch channel ^Attribute (.attr attr) .get))
+
+(defn set-attribute [ch attr val]
+  (-> ch channel ^Attribute (.attr attr) (.set val)))
 
 ;;;
 
@@ -598,7 +610,8 @@
 ;;;
 
 (defprotocol AlephServer
-  (port [_] "Returns the port the server is listening on."))
+  (port [_] "Returns the port the server is listening on.")
+  (wait-for-close [_] "Blocks until the server has been closed."))
 
 (defn epoll-available? []
   (Epoll/isAvailable))
@@ -712,10 +725,14 @@
           (close [_]
             (when on-close (on-close))
             (-> ch .close .sync)
-            (-> group .shutdownGracefully wrap-future))
+            (-> group .shutdownGracefully))
           AlephServer
           (port [_]
-            (-> ch .localAddress .getPort))))
+            (-> ch .localAddress .getPort))
+          (wait-for-close [_]
+            (-> ch .closeFuture .await)
+            (-> group .terminationFuture .await)
+            nil)))
 
       (catch Exception e
         @(.shutdownGracefully group)

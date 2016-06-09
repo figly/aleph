@@ -17,7 +17,7 @@
 ;; [Manifold](https://github.com/ztellman/manifold) deferreds and streams.  Uses of both
 ;; will be illustrated below.
 
-;; Complete documentation for the `aleph.http` namespace can be found [here](http://ideolalia.com/aleph/aleph.http.html).
+;; Complete documentation for the `aleph.http` namespace can be found [here](http://aleph.io/aleph/http.html).
 
 (defn hello-world-handler
   "A basic Ring handler which immediately returns 'hello world'"
@@ -127,9 +127,9 @@
 (def handler
   (params/wrap-params
     (compojure/routes
-      (GET "/hello" [] hello-world-handler)
+      (GET "/hello"         [] hello-world-handler)
       (GET "/delayed_hello" [] delayed-hello-world-handler)
-      (GET "/numbers" [] streaming-numbers-handler)
+      (GET "/numbers"       [] streaming-numbers-handler)
       (route/not-found "No such page."))))
 
 (def s (http/start-server handler {:port 10000}))
